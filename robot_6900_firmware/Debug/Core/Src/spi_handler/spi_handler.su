@@ -1,0 +1,5 @@
+spi_handler.c:35:6:HAL_SPI_TxRxCpltCallback	16	static
+spi_handler.c:47:6:spi_driver_init	16	static
+spi_handler.c:54:18:spi_request	40	static
+spi_handler.c:89:10:getBuffer	24	static
+spi_handler.c:106:6:select_Slave	16	static
