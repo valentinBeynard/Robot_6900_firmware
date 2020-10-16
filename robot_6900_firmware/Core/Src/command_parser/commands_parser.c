@@ -30,16 +30,16 @@ const PARSER_FSM_PROCESS full_state_machine[2] = {
 /*
 ############################################################################
 #
-#	High Purpose Variables
+#	Parser High Purpose Variables
 #
 ############################################################################
 */
 
+/* UART5 Handler */
 UART_HandleTypeDef* _huart;
 
-
 // UART Rx_buffer, filled by NVIC interrupt
-uint8_t Rx_buffer[NVIC_INT_BYTE_SIZE] = {0, 0, 0, 0};
+uint8_t Rx_buffer[NVIC_INT_BYTE_SIZE] = {0, 0, 0, 0, 0};
 
 /* Buffer pipe to stock commands before handling them.
  * Add + 1 to keep an empty 32bits command space to easily
@@ -48,7 +48,7 @@ uint8_t Rx_buffer[NVIC_INT_BYTE_SIZE] = {0, 0, 0, 0};
 uint8_t* CMDs_buffer[MAX_COMMAND_STACK_SIZE + 1];
 
 // Current size of the waiting command pipeline
-uint8_t CMDs_buffer_size = 0;
+volatile uint8_t CMDs_buffer_size = 0;
 
 /* Full pipeline flag */
 uint8_t CMDs_buffer_full = 0;
@@ -59,8 +59,8 @@ COMMANDS_PARSER_ERROR CMD_Parser_Log = PARSER_OK;
 /* Current state of the command parser state machine */
 COMMANDS_PARSER_STATE current_state = WAIT;
 
-/* Last packet IDentifier for communication reliability */
-uint8_t last_ID = 0;
+/* Last packet IDentifier for communication reliability on Rx Side */
+uint8_t rx_last_ID = 0;
 
 /* Flag counter of all bad packet received */
 uint8_t faulty_pck = 0;
@@ -68,14 +68,19 @@ uint8_t faulty_pck = 0;
 /* Pointer to the global crc engine defined in main.c */
 CRC_HandleTypeDef* _hcrc;
 
+/*
+############################################################################
+#
+#	General Shell Variables
+#
+############################################################################
+*/
 
-///* Buffer principal dans lesquel est stocké tout caractère reçu sur la liaison UART du µP */
-//byte raw_data[COMMAND_BUFFER_SIZE];
-//
-///* Pointer permettant de parcourir le Buffer Principal */
-//byte buffer_index = 0;
-//
-//byte MSG_buffer[MSG_INFO_BUFFER_SIZE] = "Start Epreuve !\n";
+/* Last packet IDentifier for communication reliability on Tx Side */
+uint8_t tx_last_ID = 0;
+
+/* Tx buffer for general shell returning data to the HOST */
+uint8_t Tx_buffer[TX_BUFFER_SIZE];
 
 /*
 ############################################################################
@@ -85,20 +90,23 @@ CRC_HandleTypeDef* _hcrc;
 ############################################################################
 */
 
+/*
+ * INTERRUPT function for command parser
+ *
+ * Fired each time the UART receives a byte command pck, and fill the command pipeline
+ *
+ */
 void NVIC_command_parser_INT(UART_HandleTypeDef *huart)
 {
 
 	if(CMDs_buffer_size < MAX_COMMAND_STACK_SIZE)
 	{
+		/* Fill pipeline and update ptr */
 		CMDs_buffer[CMDs_buffer_size] = Rx_buffer;
 		CMDs_buffer_size++;
 
-		Rx_buffer[0] = 0;
-		Rx_buffer[1] = 0;
-		Rx_buffer[2] = 0;
-		Rx_buffer[3] = 0;
-
 		CMDs_buffer_full = 0;
+
 		// Reactivate receive on Interrupt on 1 byte
 		HAL_UART_Receive_IT(huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
 	}
@@ -116,6 +124,7 @@ void NVIC_command_parser_INT(UART_HandleTypeDef *huart)
 ############################################################################
 */
 
+/* Initial the command parser */
 void uart_init(UART_HandleTypeDef *huart, CRC_HandleTypeDef* hcrc)
 {
 	// Initiate ptr
@@ -124,10 +133,19 @@ void uart_init(UART_HandleTypeDef *huart, CRC_HandleTypeDef* hcrc)
 
 	// Activate UART Receive Interrupt each 4 bytes received
 	HAL_UART_Receive_IT(_huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
-
-
 }
 
+/*
+ * Main Parser command. Only external entrance to the command parser.
+ *
+ * Handle the Command Parser Full State Machine.
+ *
+ * Each time the pipeline contains a command pck, the FSM switches to the
+ * GET_COMMAND state. WAIT otherwise.
+ *
+ * Return the global FSM state (COMMANDS_PARSER_ERROR)
+ *
+ */
 COMMANDS_PARSER_ERROR cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
 {
 #ifndef DEBUG
@@ -148,8 +166,6 @@ COMMANDS_PARSER_ERROR cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
 	// Process Parser Logs
 	if(CMDs_buffer_full == 1)
 	{
-//		// Warm user about the Full pipeline
-//		HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_SET);
 		// As we process one command in the pipeline, it's no more full. Reactivate NVIC
 		HAL_UART_Receive_IT(_huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
 
@@ -157,46 +173,52 @@ COMMANDS_PARSER_ERROR cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
 		CMD_Parser_Log |= PARSER_PIPELINE_FULL;
 	}
 
-//	if(CMD_Parser_Log != PARSER_OK)
-//	{
-//		// Warn user with warning LED
-//		HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_SET);
-//
-//	}
-
 	// Update Debug LED state regarding Parser state flags
 	generate_parser_flag(h_robot6900);
 
 	return CMD_Parser_Log;
 }
 
+/*
+ * GET_COMMAND State.
+ *
+ * Get oldest packet in the pipeline, check command integrity and match
+ * packet command to the dispatch table
+ *
+ * Update the pipeline at the end (shifting data in the queue)
+ *
+ * Return the global FSM state (COMMANDS_PARSER_ERROR)
+ *
+ */
 COMMANDS_PARSER_ERROR get_command(ROBOT6900_HANDLER* h_robot6900)
 {
 	COMMANDS_PARSER_ERROR parser_log = PARSER_OK;
 	uint8_t* raw_packet = 0;
 	CMD_PACKET cmd;
-	uint8_t cmd_not_defined = 0;
+	uint8_t cmd_defined = 0;
 
 	// Get oldest command in the queue
 	raw_packet = CMDs_buffer[0];
 
 	// Check raw packet validity and create a cmd defined struct
 	parser_log = command_integrity(raw_packet, &cmd);
+
+	// Search for command in the dispatch table
 	if(parser_log == PARSER_OK)
 	{
 		// Looking if the command is defined
 		for(uint8_t i = 0 ; i < NUMBER_OF_COMMAND; i++)
 		{
-			if(strcmp(&cmd.name, dispatch_table[i].name) == 0)
+			if(cmd.name == dispatch_table[i].name)
 			{
-				cmd_not_defined = 1;
+				cmd_defined = 1;
 				// Process command function
 				dispatch_table[i].process(&cmd, h_robot6900);
 			}
 		}
 
 		// Check if command was found
-		if(!cmd_not_defined)
+		if(!cmd_defined)
 		{
 			parser_log = PARSER_NO_CMD;
 		}
@@ -209,39 +231,70 @@ COMMANDS_PARSER_ERROR get_command(ROBOT6900_HANDLER* h_robot6900)
 	return parser_log;
 }
 
+/*
+ * Check command packet integrity (ID and CRC-8)
+ *
+ * Return the global FSM state (COMMANDS_PARSER_ERROR)
+ */
 COMMANDS_PARSER_ERROR command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd)
 {
 	COMMANDS_PARSER_ERROR parser_log = PARSER_OK;
 	uint8_t crc_buffer[2];
 
-	// Parse 32bits raw_data to the packet_structure. Avoid 4 first bits SoF
-	_cmd = (COMMANDS_PARSER_STATE*)(_raw_packet + CMD_PACKEt_SoF_SIZE);
+	// Avoid SoF byte
+	_raw_packet+=1;
+
+	// Parse 32bits raw_data to the packet_structure.
+	*(_cmd) = *(CMD_PACKET*)(_raw_packet);
 
 	// Check Packet ID
-	if(_cmd->ID != last_ID + 1)
+	if(_cmd->ID != rx_last_ID + 1)
 	{
 		parser_log = PARSER_WRONG_ID;
 	}
 	// Check CRC-8
 	else
 	{
+		/* If ID right, update ID flag for next packet */
+		if(_cmd->ID == 0xFF)
+		{
+			rx_last_ID = 0;
+		}
+		else
+		{
+			rx_last_ID = _cmd->ID;
+		}
+
+		// Calculate 8bits CRC and check for validity
 		crc_buffer[0] = _cmd->name;
 		crc_buffer[1] = _cmd->data;
 		if( (uint8_t)(HAL_CRC_Calculate(_hcrc, crc_buffer, 2)) != _cmd->crc)
 		{
 			parser_log = PARSER_WRONG_CRC;
 		}
+
+		/*
+		 * Nothing if CRC wrong
+		 */
 	}
 
 	return parser_log;
 }
 
+/*
+ * Update the command pipeline.
+ *
+ * Shit all data to the left by 5 bytes, in order to get next raw packet at
+ * index 0
+ *
+ * Return the global FSM state (COMMANDS_PARSER_ERROR)
+ */
 COMMANDS_PARSER_ERROR update_pipeline()
 {
 	COMMANDS_PARSER_ERROR parser_log = PARSER_INIT;
 
 	// Disable NVIC Interrupt before process on pipeline
-//	HAL_NVIC_DisableIRQ(UART5_IRQn);
+	HAL_NVIC_DisableIRQ(UART5_IRQn);
 
 	for(uint8_t i = 0 ; i < CMDs_buffer_size ; i++)
 	{
@@ -260,16 +313,87 @@ COMMANDS_PARSER_ERROR update_pipeline()
 	}
 
 	// Enable NVIC Interrupt after critical process on pipeline
-//	HAL_NVIC_EnableIRQ(UART5_IRQn);
+	HAL_NVIC_EnableIRQ(UART5_IRQn);
 
 	return parser_log;
 }
 
+/*
+ * WAIT State.
+ *
+ * Nothing to do.
+ *
+ */
 COMMANDS_PARSER_ERROR wait(ROBOT6900_HANDLER* h_robot6900)
 {
 	return CMD_Parser_Log;
 }
 
+/*
+############################################################################
+#
+#	General Return Shell Functions
+#
+############################################################################
+*/
+
+/*
+ * Check if firmware has to return data to the HOST, and transmit data on UART5
+ *
+ * Return global robot state, LIDar packet, ect...
+ */
+void parser_return(ROBOT6900_HANDLER* h_robot6900)
+{
+	uint8_t tx_pck_size = 0;
+
+	/* Clear TX_BUFFER */
+	memset(Tx_buffer, 0, TX_BUFFER_SIZE);
+
+	/* Build the Robot State Output Packet */
+	if(h_robot6900->robot_state.status_update)
+	{
+		//tx_pck_size = parser_OUTPUT_status(h_robot6900);
+
+		/* DEBUG */
+		Tx_buffer[0] = 'G';
+		tx_pck_size = 1;
+		/* DEBUG */
+	}
+
+	/* Send data if there is data to transmit in the buffer */
+	if(tx_pck_size != 0)
+	{
+		HAL_UART_Transmit_IT(_huart, &Tx_buffer, tx_pck_size);
+	}
+
+	/* Clear Robot Update Sate Flag */
+	h_robot6900->robot_state.status_update = 0;
+
+}
+
+
+uint8_t parser_OUTPUT_status(ROBOT6900_HANDLER* h_robot6900)
+{
+	uint8_t l_pck_state = sizeof(ROBOT6900_STATE);
+	uint8_t packet_size = 1 + 1 + l_pck_state + 1;
+
+	/* Init Start of Frame */
+	Tx_buffer[0] = (CMD_START_OF_FRAME & tx_last_ID);
+	/* Init Type of Packet */
+	Tx_buffer[1] = TX_TYPE_STATE_PCK;
+
+	/* Cast Robot State data to packet byte */
+	Tx_buffer[2] = (uint8_t*)(&h_robot6900->robot_state);
+
+	/* Add CRC for Data */
+	Tx_buffer[2 + l_pck_state] = HAL_CRC_Calculate(_hcrc, Tx_buffer[2], l_pck_state);
+
+	return packet_size;
+}
+
+/*
+ * Generate the Debug LEDs logics regarding global FSM state (COMMANDS_PARSER_ERROR)
+ */
 void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900)
 {
 	static COMMANDS_PARSER_ERROR previous_log = PARSER_OK;
@@ -277,10 +401,10 @@ void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900)
 	// Do not change LEDs statues is parser's flags didn't change
 	if(CMD_Parser_Log != previous_log)
 	{
-		h_robot6900->debug_leds = ((CMD_Parser_Log & PARSER_OK) == 1 ? 0x00 : DB_LED3);
-		h_robot6900->debug_leds |= ((CMD_Parser_Log & PARSER_NO_CMD) == PARSER_NO_CMD ? DB_LED7 : 0x00);
-		h_robot6900->debug_leds |= ((CMD_Parser_Log & PARSER_WRONG_ID) == PARSER_WRONG_ID || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED8 : 0x00);
-		h_robot6900->debug_leds |= ((CMD_Parser_Log & PARSER_PIPELINE_FULL) == PARSER_PIPELINE_FULL || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED9 : 0x00);
+		h_robot6900->robot_state.debug_leds = ((CMD_Parser_Log & PARSER_OK) == 1 ? 0x00 : DB_LED3);
+		h_robot6900->robot_state.debug_leds |= ((CMD_Parser_Log & PARSER_NO_CMD) == PARSER_NO_CMD ? DB_LED7 : 0x00);
+		h_robot6900->robot_state.debug_leds |= ((CMD_Parser_Log & PARSER_WRONG_ID) == PARSER_WRONG_ID || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED8 : 0x00);
+		h_robot6900->robot_state.debug_leds |= ((CMD_Parser_Log & PARSER_PIPELINE_FULL) == PARSER_PIPELINE_FULL || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED9 : 0x00);
 
 		// Update last parser's flag values
 		previous_log = CMD_Parser_Log;

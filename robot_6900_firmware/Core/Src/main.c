@@ -84,6 +84,7 @@ PCD_HandleTypeDef hpcd_USB_FS;
 ROBOT6900_HANDLER h_robot6900 =
 		{
 				&hiwdg,
+				0,
 				DB_LED_OK,
 				Sleeping,
 				Mouvement_non,
@@ -91,8 +92,11 @@ ROBOT6900_HANDLER h_robot6900 =
 				0,
 				0,
 				0,
-				LiDAR_Sleep
+				LiDAR_Sleep,
+				0
 		};
+
+uint8_t last_debug_leds = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -114,6 +118,9 @@ static void MX_CRC_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/*
+ * UARTs Callback function. For HOST XBee, LiDAR UART and Bluetooth
+ */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	if(huart->Instance == UART5)
@@ -122,13 +129,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 
+/*
+ * Update the LEDs debug wheels (8 LEDs) on the stm32f3Discovery Board
+ *
+ * See attached Debug_LED excel for debug codes
+ */
 void update_LEDs(ROBOT6900_HANDLER* h_robot6900)
 {
 	static uint16_t LEDs_set[8] = {LD3_Pin, LD4_Pin ,LD5_Pin, LD6_Pin, LD7_Pin, LD8_Pin, LD9_Pin, LD10_Pin};
 
 	for(uint8_t i = 0 ; i < 8 ; i++)
 	{
-		if( ((h_robot6900->debug_leds) & (0x01 << i)) == (0x01 << i))
+		if( ((h_robot6900->robot_state.debug_leds) & (0x01 << i)) == (0x01 << i))
 		{
 			  HAL_GPIO_WritePin(GPIOE, LEDs_set[i], GPIO_PIN_SET);
 		}
@@ -174,15 +186,7 @@ int main(void)
   MX_UART4_Init();
   MX_UART5_Init();
   MX_USB_PCD_Init();
-
-  /* USER CODE BEGIN DEBUG*/
-  #ifndef DEBUG
-  /* USER CODE END DEBUG */
   MX_IWDG_Init();
-  /* USER CODE BEGIN DEBUG2 */
-  #endif DEBUG
-  /* USER CODE END DEBUG2 */
-
   MX_CRC_Init();
   /* USER CODE BEGIN 2 */
 
@@ -190,7 +194,7 @@ int main(void)
   HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_RESET);
 
-
+  /* Initialise Command parser peripheral. (FSM + CRC + UART) */
   uart_init(&huart5, &hcrc);
   /* USER CODE END 2 */
 
@@ -199,9 +203,17 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  cmd_parser_process(&h_robot6900);
-	  update_LEDs(&h_robot6900);
+
     /* USER CODE BEGIN 3 */
+
+	  /*Command parser FSM */
+	  cmd_parser_process(&h_robot6900);
+
+	  /* Debug LEDs state */
+	  update_LEDs(&h_robot6900);
+
+	  /* General shell returning data to the HOST */
+	  parser_return(&h_robot6900);
   }
   /* USER CODE END 3 */
 }
@@ -216,7 +228,7 @@ void SystemClock_Config(void)
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB busses clocks
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI
                               |RCC_OSCILLATORTYPE_HSE;
@@ -232,7 +244,7 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks 
+  /** Initializes the CPU, AHB and APB busses clocks
   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
@@ -277,7 +289,7 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 1 */
 
   /* USER CODE END ADC1_Init 1 */
-  /** Common config 
+  /** Common config
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
@@ -297,14 +309,14 @@ static void MX_ADC1_Init(void)
   {
     Error_Handler();
   }
-  /** Configure the ADC multi-mode 
+  /** Configure the ADC multi-mode
   */
   multimode.Mode = ADC_MODE_INDEPENDENT;
   if (HAL_ADCEx_MultiModeConfigChannel(&hadc1, &multimode) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Configure Regular Channel 
+  /** Configure Regular Channel
   */
   sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = ADC_REGULAR_RANK_1;
@@ -335,6 +347,9 @@ static void MX_CRC_Init(void)
   /* USER CODE END CRC_Init 0 */
 
   /* USER CODE BEGIN CRC_Init 1 */
+
+	/* Initializing CRC Initial value for crc-8bit calculation */
+	hcrc.Init.InitValue = 0xFF;
 
   /* USER CODE END CRC_Init 1 */
   hcrc.Instance = CRC;
@@ -383,13 +398,13 @@ static void MX_I2C1_Init(void)
   {
     Error_Handler();
   }
-  /** Configure Analogue filter 
+  /** Configure Analogue filter
   */
   if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
   {
     Error_Handler();
   }
-  /** Configure Digital filter 
+  /** Configure Digital filter
   */
   if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
   {
@@ -414,7 +429,7 @@ static void MX_IWDG_Init(void)
   /* USER CODE END IWDG_Init 0 */
 
   /* USER CODE BEGIN IWDG_Init 1 */
-
+#ifndef DEBUG
   /* USER CODE END IWDG_Init 1 */
   hiwdg.Instance = IWDG;
   hiwdg.Init.Prescaler = IWDG_PRESCALER_4;
@@ -424,9 +439,8 @@ static void MX_IWDG_Init(void)
   {
     Error_Handler();
   }
-
   /* USER CODE BEGIN IWDG_Init 2 */
-
+#endif
   /* USER CODE END IWDG_Init 2 */
 
 }
@@ -530,7 +544,8 @@ static void MX_UART5_Init(void)
   huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart5.Init.OverSampling = UART_OVERSAMPLING_16;
   huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_DMADISABLEONERROR_INIT;
+  huart5.AdvancedInit.DMADisableonRxError = UART_ADVFEATURE_DMA_DISABLEONRXERROR;
   if (HAL_UART_Init(&huart5) != HAL_OK)
   {
     Error_Handler();
@@ -572,10 +587,10 @@ static void MX_USB_PCD_Init(void)
 
 }
 
-/** 
+/**
   * Enable DMA controller clock
   */
-static void MX_DMA_Init(void) 
+static void MX_DMA_Init(void)
 {
 
   /* DMA controller clock enable */
@@ -606,8 +621,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|LD4_Pin|LD3_Pin|LD5_Pin 
-                          |LD7_Pin|LD9_Pin|LD10_Pin|LD8_Pin 
+  HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|LD4_Pin|LD3_Pin|LD5_Pin
+                          |LD7_Pin|LD9_Pin|LD10_Pin|LD8_Pin
                           |LD6_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
@@ -616,19 +631,19 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin|LOG_WARNING_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : DRDY_Pin MEMS_INT3_Pin MEMS_INT4_Pin MEMS_INT1_Pin 
+  /*Configure GPIO pins : DRDY_Pin MEMS_INT3_Pin MEMS_INT4_Pin MEMS_INT1_Pin
                            MEMS_INT2_Pin */
-  GPIO_InitStruct.Pin = DRDY_Pin|MEMS_INT3_Pin|MEMS_INT4_Pin|MEMS_INT1_Pin 
+  GPIO_InitStruct.Pin = DRDY_Pin|MEMS_INT3_Pin|MEMS_INT4_Pin|MEMS_INT1_Pin
                           |MEMS_INT2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : CS_I2C_SPI_Pin LD4_Pin LD3_Pin LD5_Pin 
-                           LD7_Pin LD9_Pin LD10_Pin LD8_Pin 
+  /*Configure GPIO pins : CS_I2C_SPI_Pin LD4_Pin LD3_Pin LD5_Pin
+                           LD7_Pin LD9_Pin LD10_Pin LD8_Pin
                            LD6_Pin */
-  GPIO_InitStruct.Pin = CS_I2C_SPI_Pin|LD4_Pin|LD3_Pin|LD5_Pin 
-                          |LD7_Pin|LD9_Pin|LD10_Pin|LD8_Pin 
+  GPIO_InitStruct.Pin = CS_I2C_SPI_Pin|LD4_Pin|LD3_Pin|LD5_Pin
+                          |LD7_Pin|LD9_Pin|LD10_Pin|LD8_Pin
                           |LD6_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -682,7 +697,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{ 
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */

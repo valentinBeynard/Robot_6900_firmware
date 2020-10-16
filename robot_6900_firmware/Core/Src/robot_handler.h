@@ -17,12 +17,11 @@ enum Position{Position_non, Init_Position, Demande_Position};
 enum LiDAR{LiDAR_Sleep, LiDAR_ACQ_Const};
 enum DEBUG_LEDs{DB_LED_OK = 0x00, DB_LED3 = 0x01, DB_LED4 = 0x02, DB_LED5 = 0x04, DB_LED6 = 0x08, DB_LED7 = 0x10, DB_LED8 = 0x20, DB_LED9 = 0x40, DB_LED10 = 0x80};
 
-
-typedef struct COMMANDES
+typedef struct __attribute__((__packed__))
 {
-	IWDG_HandleTypeDef* _hiwdg;
-
 	enum DEBUG_LEDs debug_leds;
+
+	uint8_t status_update;
 
 	enum  RobotState Robot_State;    // State of the robot
 
@@ -33,6 +32,16 @@ typedef struct COMMANDES
 	uint16_t   Angle;                // Robot Angle
 
 	enum LiDAR LiDAR_State;			// State of the LiDAR
+
+}ROBOT6900_STATE;
+
+typedef struct __attribute__((__packed__))
+{
+	IWDG_HandleTypeDef* _hiwdg;
+
+	ROBOT6900_STATE robot_state;
+
+	uint8_t* aux_data;
 
 }ROBOT6900_HANDLER;
 

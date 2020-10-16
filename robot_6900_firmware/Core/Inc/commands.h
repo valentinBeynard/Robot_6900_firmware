@@ -7,16 +7,24 @@
 
 
 /* Length in byte of a command packet */
-#define CMD_PACKET_SIZE	4
+#define CMD_PACKET_SIZE	5
 
 #define CMD_START_OF_FRAME	0xA0
 
 /* Size description of packet component in bits */
-#define CMD_PACKEt_SoF_SIZE	4
-#define CMD_PACKET_ID_SIZE	4
+#define CMD_PACKEt_SoF_SIZE	8
+#define CMD_PACKET_ID_SIZE	8
 #define CMD_PACKET_CMD_SIZE	8
 #define CMD_PACKET_DATA_SIZE	8
 #define CMD_PACKET_CRC_SIZE	8
+
+/* Size description of packet for Return packets */
+#define TX_PACKET_SoF_SIZE	4
+#define TX_PACKET_ID_SIZE	4
+#define TX_PACKET_TYPE_SIZE	8
+#define TX_PACKET_CRC_SIZE	8
+
+#define TX_TYPE_STATE_PCK	0x01
 
 /* Packet description */
 typedef struct __attribute__((__packed__))
@@ -51,43 +59,4 @@ uint8_t check_serial(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
 //
 //
 
-//
-
-//
-//
-
-//
-//
-///*
-//  Commande de démarage de l'épreuve : D [Numéro Epreuve]
-//  Si aucun paramètre rentré, alors on démarre à l'épreuve 1
-//*/
-//byte epreuve_cmd(CMD_PACKET* cmd_packet);
-//byte epreuve_stop(CMD_PACKET* cmd_packet);
-//
-//byte safety_break_cmd(CMD_PACKET* cmd_packet);
-//byte set_default_speed_cmd(CMD_PACKET* cmd_packet);
-//byte move_forward_cmd(CMD_PACKET* cmd_packet);
-//byte move_backward_cmd(CMD_PACKET* cmd_packet);
-//byte move_stop_cmd(CMD_PACKET* cmd_packet);
-//byte rigth_rotation_cmd(CMD_PACKET* cmd_packet);
-//byte left_rotation_cmd(CMD_PACKET* cmd_packet);
-//byte complete_rotation_cmd(CMD_PACKET* cmd_packet);
-//byte angle_rotation_cmd(CMD_PACKET* cmd_packet);
-//byte move_to_cmd(CMD_PACKET* cmd_packet);
-//
-//
-//byte detecte_obstacle(CMD_PACKET* cmd_packet);
-//byte servo_move_cmd(CMD_PACKET* cmd_packet);
-//byte light_beam_ON_cmd(CMD_PACKET* cmd_packet);
-//byte light_beam_OFF_cmd(CMD_PACKET* cmd_packet);
-//byte generate_sound_cmd(CMD_PACKET* cmd_packet);
-//byte photo_cmd(CMD_PACKET* cmd_packet);
-//byte photo_OFF_cmd(CMD_PACKET* cmd_packet);
-//byte aux_cmd(CMD_PACKET* cmd_packet);
-//
-//#else
-//
-////#error Multiple define !
-//
 #endif

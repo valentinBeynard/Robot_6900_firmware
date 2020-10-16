@@ -15,6 +15,9 @@
 // Maximum number of stored command in the waiting pipe
 #define MAX_COMMAND_STACK_SIZE	5
 
+// Tx output buffer size in byte
+#define TX_BUFFER_SIZE	32
+
 typedef enum
 {
 	PARSER_INIT = 0x00,
@@ -55,47 +58,10 @@ COMMANDS_PARSER_ERROR wait(ROBOT6900_HANDLER* h_robot6900);
 COMMANDS_PARSER_ERROR command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd);
 COMMANDS_PARSER_ERROR update_pipeline();
 
+void parser_return(ROBOT6900_HANDLER* h_robot6900);
+uint8_t parser_OUTPUT_status(ROBOT6900_HANDLER* h_robot6900);
+
 void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900);
 
-//// Taille en octect que l'on alloue au buffer qui récupère la commande envoyé
-//#define COMMAND_BUFFER_SIZE 32
-//
-//// Taille en octect que l'on alloue au buffer qui envoie les informations au PC
-//#define MSG_INFO_BUFFER_SIZE 32
-//
-
-//
-//#define COMMAND_MAX_BYTES 12
-//#define MAX_PARAM_NUMBER  5
-//
-//// Byte de stop à la fin de chaque commande, imposé par le CdC
-//#define STOP_BYTE 0x0D
-//
-//// Byte séparateur entre les différents éléments d'une commande
-//#define COMMAND_SEPARATOR 0x20
-//
-//// Byte séparateur entre un arguments complexe et sa valeur
-//#define ARG_VALUE_SEPARATOR 0x3A
-//
-//// Byte retourné par le parser en cas de commande valide
-//#define COMMAND_CONFIRM_BYTE	0x3E
-//
-//// Byte retourné par le parser en cas de commande invalide
-//#define COMMAND_ERROR_BYTE	0x23
-//
-//typedef struct
-//{
-//  byte has_command;
-//  OUT_M1 * commands;
-//	IN_M1 * informations;
-//}PARSER_RESULT;
-//
-
-//
-
-//
-//
-//
-///*
 
 #endif

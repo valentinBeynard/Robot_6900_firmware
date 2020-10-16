@@ -1,7 +1,0 @@
-commands_parser.c:81:6:NVIC_command_parser_INT	16	static
-commands_parser.c:99:6:uart_init	16	static
-commands_parser.c:109:6:cmd_parser_process	16	static
-commands_parser.c:140:23:get_command	32	static
-commands_parser.c:171:23:command_integrity	24	static
-commands_parser.c:198:23:update_pipeline	16	static
-commands_parser.c:221:23:wait	16	static
