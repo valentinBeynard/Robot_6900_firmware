@@ -42,8 +42,8 @@ robot_6900_firmware.bin \
 all: robot_6900_firmware.elf secondary-outputs
 
 # Tool invocations
-robot_6900_firmware.elf: $(OBJS) $(USER_OBJS) D:\Google\ Drive\5ETI_ESE_PRJ2021\CubeIDE\ Workspace\robot_6900_firmware\STM32F303VCTX_FLASH.ld
-	arm-none-eabi-gcc -o "robot_6900_firmware.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\Google Drive\5ETI_ESE_PRJ2021\CubeIDE Workspace\robot_6900_firmware\STM32F303VCTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="robot_6900_firmware.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+robot_6900_firmware.elf: $(OBJS) $(USER_OBJS) D:\Git\Robot_6900_firmware\robot_6900_firmware\STM32F303VCTX_FLASH.ld
+	arm-none-eabi-gcc -o "robot_6900_firmware.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\Git\Robot_6900_firmware\robot_6900_firmware\STM32F303VCTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="robot_6900_firmware.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

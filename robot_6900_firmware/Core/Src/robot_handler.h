@@ -15,10 +15,14 @@ enum Movement {Mouvement_non, Avancer, Reculer, Stopper, Rot_90D, Rot_90G, Rot_1
 enum Acq_power{NoAcq, Acq_I, Acq_E, Acq_P};
 enum Position{Position_non, Init_Position, Demande_Position};
 enum LiDAR{LiDAR_Sleep, LiDAR_ACQ_Const};
+enum DEBUG_LEDs{DB_LED_OK = 0x00, DB_LED3 = 0x01, DB_LED4 = 0x02, DB_LED5 = 0x04, DB_LED6 = 0x08, DB_LED7 = 0x10, DB_LED8 = 0x20, DB_LED9 = 0x40, DB_LED10 = 0x80};
+
 
 typedef struct COMMANDES
 {
 	IWDG_HandleTypeDef* _hiwdg;
+
+	enum DEBUG_LEDs debug_leds;
 
 	enum  RobotState Robot_State;    // State of the robot
 

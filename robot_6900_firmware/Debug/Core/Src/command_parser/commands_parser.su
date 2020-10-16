@@ -1,7 +1,8 @@
 commands_parser.c:88:6:NVIC_command_parser_INT	16	static
-commands_parser.c:113:6:uart_init	16	static
-commands_parser.c:125:6:cmd_parser_process	16	static
-commands_parser.c:157:23:get_command	32	static
-commands_parser.c:188:23:command_integrity	24	static
-commands_parser.c:215:23:update_pipeline	16	static
-commands_parser.c:244:23:wait	16	static
+commands_parser.c:119:6:uart_init	16	static
+commands_parser.c:131:23:cmd_parser_process	16	static
+commands_parser.c:173:23:get_command	32	static
+commands_parser.c:212:23:command_integrity	24	static
+commands_parser.c:239:23:update_pipeline	16	static
+commands_parser.c:268:23:wait	16	static
+commands_parser.c:273:6:generate_parser_flag	16	static

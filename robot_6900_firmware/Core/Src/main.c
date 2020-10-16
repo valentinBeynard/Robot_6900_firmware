@@ -49,6 +49,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+/* Uncomment when debugging to disable IWDG */
+#define DEBUG
+
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -63,7 +68,7 @@ CRC_HandleTypeDef hcrc;
 
 I2C_HandleTypeDef hi2c1;
 
-static IWDG_HandleTypeDef hiwdg;
+IWDG_HandleTypeDef hiwdg;
 
 SPI_HandleTypeDef hspi1;
 
@@ -79,6 +84,7 @@ PCD_HandleTypeDef hpcd_USB_FS;
 ROBOT6900_HANDLER h_robot6900 =
 		{
 				&hiwdg,
+				DB_LED_OK,
 				Sleeping,
 				Mouvement_non,
 				0,
@@ -116,7 +122,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 
+void update_LEDs(ROBOT6900_HANDLER* h_robot6900)
+{
+	static uint16_t LEDs_set[8] = {LD3_Pin, LD4_Pin ,LD5_Pin, LD6_Pin, LD7_Pin, LD8_Pin, LD9_Pin, LD10_Pin};
 
+	for(uint8_t i = 0 ; i < 8 ; i++)
+	{
+		if( ((h_robot6900->debug_leds) & (0x01 << i)) == (0x01 << i))
+		{
+			  HAL_GPIO_WritePin(GPIOE, LEDs_set[i], GPIO_PIN_SET);
+		}
+		else{
+			  HAL_GPIO_WritePin(GPIOE, LEDs_set[i], GPIO_PIN_RESET);
+		}
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -154,14 +174,21 @@ int main(void)
   MX_UART4_Init();
   MX_UART5_Init();
   MX_USB_PCD_Init();
+
+  /* USER CODE BEGIN DEBUG*/
+  #ifndef DEBUG
+  /* USER CODE END DEBUG */
   MX_IWDG_Init();
+  /* USER CODE BEGIN DEBUG2 */
+  #endif DEBUG
+  /* USER CODE END DEBUG2 */
+
   MX_CRC_Init();
   /* USER CODE BEGIN 2 */
 
   // Initiate LOG LEDs
   HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_RESET);
-
 
 
   uart_init(&huart5, &hcrc);
@@ -173,6 +200,7 @@ int main(void)
   {
     /* USER CODE END WHILE */
 	  cmd_parser_process(&h_robot6900);
+	  update_LEDs(&h_robot6900);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -396,6 +424,7 @@ static void MX_IWDG_Init(void)
   {
     Error_Handler();
   }
+
   /* USER CODE BEGIN IWDG_Init 2 */
 
   /* USER CODE END IWDG_Init 2 */

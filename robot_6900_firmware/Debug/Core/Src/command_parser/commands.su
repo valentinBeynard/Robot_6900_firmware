@@ -1,1 +1,2 @@
 commands.c:3:9:default_process	16	static
+commands.c:11:9:check_serial	16	static

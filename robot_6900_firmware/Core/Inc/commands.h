@@ -9,6 +9,8 @@
 /* Length in byte of a command packet */
 #define CMD_PACKET_SIZE	4
 
+#define CMD_START_OF_FRAME	0xA0
+
 /* Size description of packet component in bits */
 #define CMD_PACKEt_SoF_SIZE	4
 #define CMD_PACKET_ID_SIZE	4
@@ -33,6 +35,7 @@ typedef struct
 }CMD_;
 
 uint8_t default_process(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t check_serial(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
 
 //*/
 //

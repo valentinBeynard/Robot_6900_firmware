@@ -12,7 +12,7 @@
 const CMD_ dispatch_table [NUMBER_OF_COMMAND] = {
 
 	{0xA1, default_process},
-    {0xA2, default_process}
+    {0xA2, check_serial}
 
 };
 
@@ -92,6 +92,12 @@ void NVIC_command_parser_INT(UART_HandleTypeDef *huart)
 	{
 		CMDs_buffer[CMDs_buffer_size] = Rx_buffer;
 		CMDs_buffer_size++;
+
+		Rx_buffer[0] = 0;
+		Rx_buffer[1] = 0;
+		Rx_buffer[2] = 0;
+		Rx_buffer[3] = 0;
+
 		CMDs_buffer_full = 0;
 		// Reactivate receive on Interrupt on 1 byte
 		HAL_UART_Receive_IT(huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
@@ -122,9 +128,11 @@ void uart_init(UART_HandleTypeDef *huart, CRC_HandleTypeDef* hcrc)
 
 }
 
-void cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
+COMMANDS_PARSER_ERROR cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
 {
+#ifndef DEBUG
 	HAL_IWDG_Refresh(h_robot6900->_hiwdg);
+#endif
 
 	if(CMDs_buffer_size > 0)
 	{
@@ -140,25 +148,34 @@ void cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
 	// Process Parser Logs
 	if(CMDs_buffer_full == 1)
 	{
-		// Warm user about the Full pipeline
-		HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_SET);
+//		// Warm user about the Full pipeline
+//		HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_SET);
 		// As we process one command in the pipeline, it's no more full. Reactivate NVIC
 		HAL_UART_Receive_IT(_huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
+
+		// Notify Pipeline is full
+		CMD_Parser_Log |= PARSER_PIPELINE_FULL;
 	}
 
-	if(CMD_Parser_Log != PARSER_OK)
-	{
-		// Warn user with warning LED
-		HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_SET);
+//	if(CMD_Parser_Log != PARSER_OK)
+//	{
+//		// Warn user with warning LED
+//		HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_SET);
+//
+//	}
 
-	}
+	// Update Debug LED state regarding Parser state flags
+	generate_parser_flag(h_robot6900);
+
+	return CMD_Parser_Log;
 }
 
-COMMANDS_PARSER_STATE get_command(ROBOT6900_HANDLER* h_robot6900)
+COMMANDS_PARSER_ERROR get_command(ROBOT6900_HANDLER* h_robot6900)
 {
-	COMMANDS_PARSER_STATE parser_log = PARSER_OK;
+	COMMANDS_PARSER_ERROR parser_log = PARSER_OK;
 	uint8_t* raw_packet = 0;
 	CMD_PACKET cmd;
+	uint8_t cmd_not_defined = 0;
 
 	// Get oldest command in the queue
 	raw_packet = CMDs_buffer[0];
@@ -172,22 +189,29 @@ COMMANDS_PARSER_STATE get_command(ROBOT6900_HANDLER* h_robot6900)
 		{
 			if(strcmp(&cmd.name, dispatch_table[i].name) == 0)
 			{
+				cmd_not_defined = 1;
 				// Process command function
 				dispatch_table[i].process(&cmd, h_robot6900);
 			}
 		}
+
+		// Check if command was found
+		if(!cmd_not_defined)
+		{
+			parser_log = PARSER_NO_CMD;
+		}
 	}
 
 	// Remove command from the buffer and shift next one
-	parser_log = update_pipeline();
+	parser_log |= update_pipeline();
 
 
 	return parser_log;
 }
 
-COMMANDS_PARSER_STATE command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd)
+COMMANDS_PARSER_ERROR command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd)
 {
-	COMMANDS_PARSER_STATE parser_log = PARSER_OK;
+	COMMANDS_PARSER_ERROR parser_log = PARSER_OK;
 	uint8_t crc_buffer[2];
 
 	// Parse 32bits raw_data to the packet_structure. Avoid 4 first bits SoF
@@ -212,12 +236,12 @@ COMMANDS_PARSER_STATE command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd)
 	return parser_log;
 }
 
-COMMANDS_PARSER_STATE update_pipeline()
+COMMANDS_PARSER_ERROR update_pipeline()
 {
-	COMMANDS_PARSER_STATE parser_log = PARSER_OK;
+	COMMANDS_PARSER_ERROR parser_log = PARSER_INIT;
 
 	// Disable NVIC Interrupt before process on pipeline
-	HAL_NVIC_DisableIRQ(UART5_IRQn);
+//	HAL_NVIC_DisableIRQ(UART5_IRQn);
 
 	for(uint8_t i = 0 ; i < CMDs_buffer_size ; i++)
 	{
@@ -236,13 +260,31 @@ COMMANDS_PARSER_STATE update_pipeline()
 	}
 
 	// Enable NVIC Interrupt after critical process on pipeline
-	HAL_NVIC_EnableIRQ(UART5_IRQn);
+//	HAL_NVIC_EnableIRQ(UART5_IRQn);
 
 	return parser_log;
 }
 
-COMMANDS_PARSER_STATE wait(ROBOT6900_HANDLER* h_robot6900)
+COMMANDS_PARSER_ERROR wait(ROBOT6900_HANDLER* h_robot6900)
 {
+	return CMD_Parser_Log;
+}
+
+void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900)
+{
+	static COMMANDS_PARSER_ERROR previous_log = PARSER_OK;
+
+	// Do not change LEDs statues is parser's flags didn't change
+	if(CMD_Parser_Log != previous_log)
+	{
+		h_robot6900->debug_leds = ((CMD_Parser_Log & PARSER_OK) == 1 ? 0x00 : DB_LED3);
+		h_robot6900->debug_leds |= ((CMD_Parser_Log & PARSER_NO_CMD) == PARSER_NO_CMD ? DB_LED7 : 0x00);
+		h_robot6900->debug_leds |= ((CMD_Parser_Log & PARSER_WRONG_ID) == PARSER_WRONG_ID || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED8 : 0x00);
+		h_robot6900->debug_leds |= ((CMD_Parser_Log & PARSER_PIPELINE_FULL) == PARSER_PIPELINE_FULL || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED9 : 0x00);
+
+		// Update last parser's flag values
+		previous_log = CMD_Parser_Log;
+	}
 
 }
 

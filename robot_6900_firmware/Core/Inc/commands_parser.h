@@ -17,11 +17,13 @@
 
 typedef enum
 {
-  PARSER_OK = 0,
-  PARSER_UNKNOWN,
-  PARSER_PIPELINE_FULL,
-  PARSER_WRONG_ID,
-  PARSER_WRONG_CRC
+	PARSER_INIT = 0x00,
+	PARSER_OK = 0x01,
+	PARSER_UNKNOWN = 0x02,
+	PARSER_PIPELINE_FULL = 0x04,
+	PARSER_WRONG_ID = 0x08,
+	PARSER_WRONG_CRC = 0x10,
+	PARSER_NO_CMD = 0x20
 }COMMANDS_PARSER_ERROR;
 
 typedef enum
@@ -47,11 +49,13 @@ void uart_init(UART_HandleTypeDef *huart, CRC_HandleTypeDef* _hcrc);
 //        Core Code of commands_parser.c
 //#############################################################################
 
-void cmd_parser_process(ROBOT6900_HANDLER* h_robot6900);
-COMMANDS_PARSER_STATE get_command(ROBOT6900_HANDLER* h_robot6900);
-COMMANDS_PARSER_STATE wait(ROBOT6900_HANDLER* h_robot6900);
-COMMANDS_PARSER_STATE command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd);
-COMMANDS_PARSER_STATE update_pipeline();
+COMMANDS_PARSER_ERROR cmd_parser_process(ROBOT6900_HANDLER* h_robot6900);
+COMMANDS_PARSER_ERROR get_command(ROBOT6900_HANDLER* h_robot6900);
+COMMANDS_PARSER_ERROR wait(ROBOT6900_HANDLER* h_robot6900);
+COMMANDS_PARSER_ERROR command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd);
+COMMANDS_PARSER_ERROR update_pipeline();
+
+void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900);
 
 //// Taille en octect que l'on alloue au buffer qui récupère la commande envoyé
 //#define COMMAND_BUFFER_SIZE 32
