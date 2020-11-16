@@ -37,9 +37,19 @@ typedef struct __attribute__((__packed__))
 
 typedef struct __attribute__((__packed__))
 {
+	uint8_t state;
+	uint16_t error_code;
+	uint8_t* data;
+	uint8_t data_size;
+}RPLIDAR_HANDLER;
+
+typedef struct __attribute__((__packed__))
+{
 	IWDG_HandleTypeDef* _hiwdg;
 
-	ROBOT6900_STATE robot_state;
+	ROBOT6900_STATE* robot_state;
+
+	RPLIDAR_HANDLER* RPlidar;
 
 	uint8_t* aux_data;
 

@@ -40,6 +40,7 @@
 /* USER CODE BEGIN Includes */
 #include "robot_handler.h"
 #include "commands_parser.h"
+#include "RPlidar.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,6 +73,8 @@ IWDG_HandleTypeDef hiwdg;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim7;
+
 UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart5;
 DMA_HandleTypeDef hdma_uart4_rx;
@@ -80,23 +83,21 @@ PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
 
+ROBOT6900_STATE robot_state;
+RPLIDAR_HANDLER RPlidar;
 
 ROBOT6900_HANDLER h_robot6900 =
 		{
 				&hiwdg,
-				0,
-				DB_LED_OK,
-				Sleeping,
-				Mouvement_non,
-				0,
-				0,
-				0,
-				0,
-				LiDAR_Sleep,
+				&robot_state,
+				&RPlidar,
 				0
 		};
 
 uint8_t last_debug_leds = 0;
+
+volatile uint16_t a_test = 0;
+uint16_t b_test = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -111,6 +112,7 @@ static void MX_UART5_Init(void);
 static void MX_USB_PCD_Init(void);
 static void MX_IWDG_Init(void);
 static void MX_CRC_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -127,6 +129,19 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	{
 		NVIC_command_parser_INT(huart);
 	}
+	else if(huart->Instance == UART4)
+	{
+		NVIC_RPlidar_INT(huart);
+	}
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+	if(htim->Instance==TIM7)
+	{
+		a_test++;
+		NVIC_Timout_1ms_INT(htim);
+	}
 }
 
 /*
@@ -140,7 +155,7 @@ void update_LEDs(ROBOT6900_HANDLER* h_robot6900)
 
 	for(uint8_t i = 0 ; i < 8 ; i++)
 	{
-		if( ((h_robot6900->robot_state.debug_leds) & (0x01 << i)) == (0x01 << i))
+		if( ((h_robot6900->robot_state->debug_leds) & (0x01 << i)) == (0x01 << i))
 		{
 			  HAL_GPIO_WritePin(GPIOE, LEDs_set[i], GPIO_PIN_SET);
 		}
@@ -149,6 +164,8 @@ void update_LEDs(ROBOT6900_HANDLER* h_robot6900)
 		}
 	}
 }
+
+
 /* USER CODE END 0 */
 
 /**
@@ -188,14 +205,29 @@ int main(void)
   MX_USB_PCD_Init();
   MX_IWDG_Init();
   MX_CRC_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
 
   // Initiate LOG LEDs
   HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_RESET);
 
-  /* Initialise Command parser peripheral. (FSM + CRC + UART) */
+  /* Initialise Command parser peripheral. (FSM + CRC + UART5) */
   uart_init(&huart5, &hcrc);
+
+  /* Initialise RPlidar peripheral (FSM + UART4) */
+  RPlidar_init(&huart4, &htim7);
+//  HAL_TIM_Base_Start_IT(&htim2);
+//
+//	while(a_test < 10000)
+//	{
+//		b_test += 10 *a_test;
+//
+//	}
+//
+//	b_test += 10;
+//	a_test = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -209,11 +241,14 @@ int main(void)
 	  /*Command parser FSM */
 	  cmd_parser_process(&h_robot6900);
 
+	  /* RPlidar FSM */
+	  RPlidar_process(&h_robot6900);
+
 	  /* Debug LEDs state */
 	  update_LEDs(&h_robot6900);
 
 	  /* General shell returning data to the HOST */
-	  parser_return(&h_robot6900);
+//	  parser_return(&h_robot6900);
   }
   /* USER CODE END 3 */
 }
@@ -486,6 +521,44 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 0;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 47999;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
   * @brief UART4 Initialization Function
   * @param None
   * @retval None
@@ -509,7 +582,8 @@ static void MX_UART4_Init(void)
   huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart4.Init.OverSampling = UART_OVERSAMPLING_16;
   huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart4.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_DMADISABLEONERROR_INIT;
+  huart4.AdvancedInit.DMADisableonRxError = UART_ADVFEATURE_DMA_DISABLEONRXERROR;
   if (HAL_UART_Init(&huart4) != HAL_OK)
   {
     Error_Handler();
@@ -629,7 +703,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOD, CS_FPGA_Pin|CS_Accelerometer_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin|LOG_WARNING_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin|LOG_WARNING_Pin|RPLIDAR_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : DRDY_Pin MEMS_INT3_Pin MEMS_INT4_Pin MEMS_INT1_Pin
                            MEMS_INT2_Pin */
@@ -663,8 +737,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LOG_HARDFAULT_Pin LOG_WARNING_Pin */
-  GPIO_InitStruct.Pin = LOG_HARDFAULT_Pin|LOG_WARNING_Pin;
+  /*Configure GPIO pins : LOG_HARDFAULT_Pin LOG_WARNING_Pin RPLIDAR_EN_Pin */
+  GPIO_InitStruct.Pin = LOG_HARDFAULT_Pin|LOG_WARNING_Pin|RPLIDAR_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

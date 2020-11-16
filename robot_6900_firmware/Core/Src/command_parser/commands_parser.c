@@ -119,7 +119,7 @@ void NVIC_command_parser_INT(UART_HandleTypeDef *huart)
 /*
 ############################################################################
 #
-#	Functionnal behaviours
+#	Functional behaviors
 #
 ############################################################################
 */
@@ -350,7 +350,7 @@ void parser_return(ROBOT6900_HANDLER* h_robot6900)
 	memset(Tx_buffer, 0, TX_BUFFER_SIZE);
 
 	/* Build the Robot State Output Packet */
-	if(h_robot6900->robot_state.status_update)
+	if(h_robot6900->robot_state->status_update)
 	{
 		//tx_pck_size = parser_OUTPUT_status(h_robot6900);
 
@@ -367,7 +367,7 @@ void parser_return(ROBOT6900_HANDLER* h_robot6900)
 	}
 
 	/* Clear Robot Update Sate Flag */
-	h_robot6900->robot_state.status_update = 0;
+	h_robot6900->robot_state->status_update = 0;
 
 }
 
@@ -401,10 +401,10 @@ void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900)
 	// Do not change LEDs statues is parser's flags didn't change
 	if(CMD_Parser_Log != previous_log)
 	{
-		h_robot6900->robot_state.debug_leds = ((CMD_Parser_Log & PARSER_OK) == 1 ? 0x00 : DB_LED3);
-		h_robot6900->robot_state.debug_leds |= ((CMD_Parser_Log & PARSER_NO_CMD) == PARSER_NO_CMD ? DB_LED7 : 0x00);
-		h_robot6900->robot_state.debug_leds |= ((CMD_Parser_Log & PARSER_WRONG_ID) == PARSER_WRONG_ID || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED8 : 0x00);
-		h_robot6900->robot_state.debug_leds |= ((CMD_Parser_Log & PARSER_PIPELINE_FULL) == PARSER_PIPELINE_FULL || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED9 : 0x00);
+		h_robot6900->robot_state->debug_leds = ((CMD_Parser_Log & PARSER_OK) == 1 ? 0x00 : DB_LED3);
+		h_robot6900->robot_state->debug_leds |= ((CMD_Parser_Log & PARSER_NO_CMD) == PARSER_NO_CMD ? DB_LED7 : 0x00);
+		h_robot6900->robot_state->debug_leds |= ((CMD_Parser_Log & PARSER_WRONG_ID) == PARSER_WRONG_ID || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED8 : 0x00);
+		h_robot6900->robot_state->debug_leds |= ((CMD_Parser_Log & PARSER_PIPELINE_FULL) == PARSER_PIPELINE_FULL || (CMD_Parser_Log & PARSER_WRONG_CRC) == PARSER_WRONG_CRC ? DB_LED9 : 0x00);
 
 		// Update last parser's flag values
 		previous_log = CMD_Parser_Log;

@@ -66,6 +66,26 @@ Reset_Handler:
   movs	r1, #0
   b	LoopCopyDataInit
 
+.section  .text.Reset_Handler
+/*
+.weak  HardFault_Handler
+.type  HardFault_Handler, %function
+HardFault_Handler:
+  movs r0,#4
+  movs r1, lr
+  tst r0, r1
+  beq _MSP
+  mrs r0, psp
+  b _HALT
+_MSP:
+  mrs r0, msp
+_HALT:
+  ldr r1,[r0,#20]
+  b hard_fault_handler_c
+  bkpt #0
+
+.size  HardFault_Handler, .-HardFault_Handler
+*/
 CopyDataInit:
 	ldr	r3, =_sidata
 	ldr	r3, [r3, r1]
@@ -110,6 +130,8 @@ LoopForever:
  * @param  None
  * @retval : None
 */
+
+
     .section	.text.Default_Handler,"ax",%progbits
 Default_Handler:
 Infinite_Loop:

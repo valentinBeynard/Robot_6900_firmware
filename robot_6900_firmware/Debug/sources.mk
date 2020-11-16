@@ -12,12 +12,15 @@ SIZE_OUTPUT :=
 OBJDUMP_LIST := 
 EXECUTABLES := 
 OBJS := 
+S_DEPS := 
+S_UPPER_DEPS := 
 C_DEPS := 
 OBJCOPY_BIN := 
 
 # Every subdirectory with source files must be described here
 SUBDIRS := \
 Core/Src/command_parser \
+Core/Src/lidar \
 Core/Src \
 Core/Src/spi_handler \
 Core/Startup \
