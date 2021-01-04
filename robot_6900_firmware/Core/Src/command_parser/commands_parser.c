@@ -36,7 +36,7 @@ const PARSER_FSM_PROCESS full_state_machine[2] = {
 */
 
 /* UART5 Handler */
-UART_HandleTypeDef* _huart;
+UART_HandleTypeDef* _huart5;
 
 // UART Rx_buffer, filled by NVIC interrupt
 uint8_t Rx_buffer[NVIC_INT_BYTE_SIZE] = {0, 0, 0, 0, 0};
@@ -129,10 +129,10 @@ void uart_init(UART_HandleTypeDef *huart, CRC_HandleTypeDef* hcrc)
 {
 	// Initiate ptr
 	_hcrc = hcrc;
-	_huart = huart;
+	_huart5 = huart;
 
 	// Activate UART Receive Interrupt each 4 bytes received
-	HAL_UART_Receive_IT(_huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
+	HAL_UART_Receive_IT(_huart5, &Rx_buffer, NVIC_INT_BYTE_SIZE);
 }
 
 /*
@@ -167,7 +167,7 @@ COMMANDS_PARSER_ERROR cmd_parser_process(ROBOT6900_HANDLER* h_robot6900)
 	if(CMDs_buffer_full == 1)
 	{
 		// As we process one command in the pipeline, it's no more full. Reactivate NVIC
-		HAL_UART_Receive_IT(_huart, &Rx_buffer, NVIC_INT_BYTE_SIZE);
+		HAL_UART_Receive_IT(_huart5, &Rx_buffer, NVIC_INT_BYTE_SIZE);
 
 		// Notify Pipeline is full
 		CMD_Parser_Log |= PARSER_PIPELINE_FULL;
@@ -347,24 +347,30 @@ void parser_return(ROBOT6900_HANDLER* h_robot6900)
 	uint8_t tx_pck_size = 0;
 
 	/* Clear TX_BUFFER */
-	memset(Tx_buffer, 0, TX_BUFFER_SIZE);
+	//memset(Tx_buffer, 0, TX_BUFFER_SIZE);
 
-	/* Build the Robot State Output Packet */
-	if(h_robot6900->robot_state->status_update)
+	if(h_robot6900->RPlidar->RPlidar_update)
 	{
-		//tx_pck_size = parser_OUTPUT_status(h_robot6900);
-
-		/* DEBUG */
-		Tx_buffer[0] = 'G';
-		tx_pck_size = 1;
-		/* DEBUG */
+		parser_OUTPUT_RPlidar(h_robot6900);
+//		HAL_UART_Transmit(_huart5, Tx_buffer, tx_pck_size, 0xFFFF);
+		h_robot6900->RPlidar->RPlidar_update = 0;
 	}
-
-	/* Send data if there is data to transmit in the buffer */
-	if(tx_pck_size != 0)
-	{
-		HAL_UART_Transmit_IT(_huart, &Tx_buffer, tx_pck_size);
-	}
+//	/* Build the Robot State Output Packet */
+//	if(h_robot6900->robot_state->status_update)
+//	{
+//		//tx_pck_size = parser_OUTPUT_status(h_robot6900);
+//
+//		/* DEBUG */
+//		Tx_buffer[0] = 'G';
+//		tx_pck_size = 1;
+//		/* DEBUG */
+//	}
+//
+//	/* Send data if there is data to transmit in the buffer */
+//	if(tx_pck_size != 0)
+//	{
+//		HAL_UART_Transmit_IT(_huart, &Tx_buffer, tx_pck_size);
+//	}
 
 	/* Clear Robot Update Sate Flag */
 	h_robot6900->robot_state->status_update = 0;
@@ -390,6 +396,28 @@ uint8_t parser_OUTPUT_status(ROBOT6900_HANDLER* h_robot6900)
 
 	return packet_size;
 }
+
+uint8_t parser_OUTPUT_RPlidar(ROBOT6900_HANDLER* h_robot6900)
+{
+	uint16_t pck_size = 0;
+	/* Init Start of Frame */
+	Tx_buffer[0] = (CMD_START_OF_FRAME & tx_last_ID);
+	/* Init Type of Packet */
+	Tx_buffer[1] = TX_TYPE_DESCRIPTOR_PCK;
+
+	// RPlidar Packet Size
+	Tx_buffer[2] = (uint8_t)(h_robot6900->RPlidar->data_size & 0x00FF);
+	Tx_buffer[3] = (uint8_t)(h_robot6900->RPlidar->data_size >> 8);
+	Tx_buffer[4] = '\n';
+
+	// Send Pre-packet descriptor
+	HAL_UART_Transmit(_huart5, &Tx_buffer, 5, 0xFFFF);
+
+	// Send prepacket (4 bytes in a blocking way)
+	HAL_UART_Transmit_IT(_huart5, h_robot6900->RPlidar->data, h_robot6900->RPlidar->data_size);
+
+}
+
 
 /*
  * Generate the Debug LEDs logics regarding global FSM state (COMMANDS_PARSER_ERROR)

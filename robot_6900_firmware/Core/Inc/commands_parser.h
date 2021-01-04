@@ -60,6 +60,7 @@ COMMANDS_PARSER_ERROR update_pipeline();
 
 void parser_return(ROBOT6900_HANDLER* h_robot6900);
 uint8_t parser_OUTPUT_status(ROBOT6900_HANDLER* h_robot6900);
+uint8_t parser_OUTPUT_RPlidar(ROBOT6900_HANDLER* h_robot6900);
 
 void generate_parser_flag(ROBOT6900_HANDLER* h_robot6900);
 

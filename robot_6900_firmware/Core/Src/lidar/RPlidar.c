@@ -63,6 +63,10 @@ volatile uint16_t RPM_cnt_1ms = 0;
 /* RP_lidar motor RPM */
 float RPlidar_RPM = 0.0f;
 
+
+//uint8_t RPlidar_OUTPUT_cnt = 0;
+uint16_t RPlidar_OUTPUT_cnt = 0;
+
 /* RP_lidar Descriptor packet */
 RPLIDAR_DESCRIPTOR_PCK RPlidar_descriptor_pck =
 		{
@@ -180,6 +184,7 @@ void NVIC_Timout_1ms_INT(TIM_HandleTypeDef* htim)
 	if(RPM_init == 1)
 	{
 		RPM_cnt_1ms += 1;
+		RPlidar_OUTPUT_cnt += 1;
 	}
 	else
 	{
@@ -204,11 +209,13 @@ void NVIC_Timout_1ms_INT(TIM_HandleTypeDef* htim)
  * Set RP_lidar FSM to initiate state.
  *
  */
-void RPlidar_init(UART_HandleTypeDef *huart, TIM_HandleTypeDef* htim7)
+void RPlidar_init(ROBOT6900_HANDLER* h_robot6900, UART_HandleTypeDef *huart, TIM_HandleTypeDef* htim7)
 {
 	// Initiate ptr
 	_huart = huart;
 	_htim7 = htim7;
+
+	h_robot6900->RPlidar->data = (uint16_t*)(&RPlidar_data);
 
 	// Disable Lidar motor
 	HAL_GPIO_WritePin(GPIOA, RPLIDAR_EN_Pin, GPIO_PIN_RESET);
@@ -241,6 +248,12 @@ RPLIDAR_ERROR RPlidar_process(ROBOT6900_HANDLER* h_robot6900)
 
 	// Full State Machine Call
 	RPlidar_Log = (RPlidar_FSM[RPlidar_current_state]).state_process(h_robot6900);
+
+	if(RPlidar_OUTPUT_cnt >= RPLIDAR_OUTPUT_100ms)
+	{
+		h_robot6900->RPlidar->RPlidar_update = 1;
+		RPlidar_OUTPUT_cnt = 0;
+	}
 
 	return RPlidar_Log;
 }
@@ -676,6 +689,8 @@ RPLIDAR_ERROR processing_state(ROBOT6900_HANDLER* h_robot6900)
 	if(S_parameter == 1)
 	{
 		RPlidar_RPM = RPlidar_measure_RPM();
+		// Times 2 since h_robot6900->RPlidar->data is a 16bits ptr instead of 32bits ptr
+		h_robot6900->RPlidar->data_size = 2 * current_data_index;
 
 #ifdef RPLIDAR_DEBUG
 		scan_DEBUG[nbr_scan].scan_ID = nbr_scan;

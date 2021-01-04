@@ -216,7 +216,7 @@ int main(void)
   uart_init(&huart5, &hcrc);
 
   /* Initialise RPlidar peripheral (FSM + UART4) */
-  RPlidar_init(&huart4, &htim7);
+  RPlidar_init(&h_robot6900, &huart4, &htim7);
 //  HAL_TIM_Base_Start_IT(&htim2);
 //
 //	while(a_test < 10000)
@@ -248,7 +248,7 @@ int main(void)
 	  update_LEDs(&h_robot6900);
 
 	  /* General shell returning data to the HOST */
-//	  parser_return(&h_robot6900);
+	  parser_return(&h_robot6900);
   }
   /* USER CODE END 3 */
 }

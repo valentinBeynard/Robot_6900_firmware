@@ -77,6 +77,7 @@
 /* Number of sample data in a 360 Scan at 4KHz */
 #define SAMPLES_PER_360	608
 
+#define RPLIDAR_OUTPUT_100ms	2000
 
 #ifdef RPLIDAR_DEBUG
 
@@ -154,7 +155,7 @@ void NVIC_Timout_1ms_INT(TIM_HandleTypeDef* htim);
 //        Core Code of RPlidar.c
 //#############################################################################
 
-void RPlidar_init(UART_HandleTypeDef *huart, TIM_HandleTypeDef* htim7);
+void RPlidar_init(ROBOT6900_HANDLER* h_robot6900, UART_HandleTypeDef *huart, TIM_HandleTypeDef* htim7);
 RPLIDAR_ERROR RPlidar_process(ROBOT6900_HANDLER* h_robot6900);
 
 //#############################################################################

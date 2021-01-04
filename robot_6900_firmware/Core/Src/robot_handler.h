@@ -39,8 +39,9 @@ typedef struct __attribute__((__packed__))
 {
 	uint8_t state;
 	uint16_t error_code;
-	uint8_t* data;
-	uint8_t data_size;
+	uint16_t* data;
+	uint16_t data_size;
+	uint8_t RPlidar_update;
 }RPLIDAR_HANDLER;
 
 typedef struct __attribute__((__packed__))

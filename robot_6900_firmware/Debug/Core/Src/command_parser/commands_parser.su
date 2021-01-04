@@ -6,5 +6,6 @@ commands_parser.c:239:23:command_integrity	24	static
 commands_parser.c:292:23:update_pipeline	16	static
 commands_parser.c:327:23:wait	16	static
 commands_parser.c:345:6:parser_return	24	static
-commands_parser.c:375:9:parser_OUTPUT_status	24	static
-commands_parser.c:397:6:generate_parser_flag	16	static
+commands_parser.c:381:9:parser_OUTPUT_status	24	static
+commands_parser.c:400:9:parser_OUTPUT_RPlidar	24	static
+commands_parser.c:425:6:generate_parser_flag	16	static

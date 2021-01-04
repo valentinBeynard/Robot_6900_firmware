@@ -25,6 +25,8 @@
 #define TX_PACKET_CRC_SIZE	8
 
 #define TX_TYPE_STATE_PCK	0x01
+#define TX_TYPE_DESCRIPTOR_PCK	0x02
+
 
 /* Packet description */
 typedef struct __attribute__((__packed__))
