@@ -7,7 +7,7 @@
 #include "commands.h"
 
 /* Number of implemented commands */
-#define NUMBER_OF_COMMAND 2
+#define NUMBER_OF_COMMAND 8
 
 // NVIC Interrupt buffer size in byte
 #define NVIC_INT_BYTE_SIZE	CMD_PACKET_SIZE

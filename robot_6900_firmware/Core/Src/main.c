@@ -41,6 +41,7 @@
 #include "robot_handler.h"
 #include "commands_parser.h"
 #include "RPlidar.h"
+#include "washer_handler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -76,8 +77,9 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim7;
 
 UART_HandleTypeDef huart4;
-UART_HandleTypeDef huart5;
+UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_uart4_rx;
+DMA_HandleTypeDef hdma_usart1_tx;
 
 PCD_HandleTypeDef hpcd_USB_FS;
 
@@ -108,11 +110,11 @@ static void MX_ADC1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_UART4_Init(void);
-static void MX_UART5_Init(void);
 static void MX_USB_PCD_Init(void);
 static void MX_IWDG_Init(void);
 static void MX_CRC_Init(void);
 static void MX_TIM7_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -125,7 +127,7 @@ static void MX_TIM7_Init(void);
  */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-	if(huart->Instance == UART5)
+	if(huart->Instance == USART1)
 	{
 		NVIC_command_parser_INT(huart);
 	}
@@ -135,15 +137,31 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if(huart->Instance == USART1)
+	{
+		NVIC_command_parser_TX_INT(huart);
+	}
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
 	if(htim->Instance==TIM7)
 	{
+		h_robot6900.robot_state->time_ms++;
 		a_test++;
 		NVIC_Timout_1ms_INT(htim);
 	}
 }
 
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+	if(hadc->Instance == ADC1)
+	{
+		ADC_Conversion_INT(hadc);
+	}
+}
 /*
  * Update the LEDs debug wheels (8 LEDs) on the stm32f3Discovery Board
  *
@@ -175,6 +193,8 @@ void update_LEDs(ROBOT6900_HANDLER* h_robot6900)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	h_robot6900.robot_state->time_ms = 0;
+	//SPI_DRIVER_ERROR spi_log = SPI_DRIVER_OK;
 
   /* USER CODE END 1 */
 
@@ -201,33 +221,35 @@ int main(void)
   MX_I2C1_Init();
   MX_SPI1_Init();
   MX_UART4_Init();
-  MX_UART5_Init();
   MX_USB_PCD_Init();
   MX_IWDG_Init();
   MX_CRC_Init();
   MX_TIM7_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   // Initiate LOG LEDs
-  HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_RESET);
+  //HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin, GPIO_PIN_RESET);
+  //HAL_GPIO_WritePin(GPIOA, LOG_WARNING_Pin, GPIO_PIN_RESET);
 
   /* Initialise Command parser peripheral. (FSM + CRC + UART5) */
-  uart_init(&huart5, &hcrc);
+  uart_init(&huart1, &hcrc);
+  spi_driver_init(&hspi1);
 
   /* Initialise RPlidar peripheral (FSM + UART4) */
   RPlidar_init(&h_robot6900, &huart4, &htim7);
-//  HAL_TIM_Base_Start_IT(&htim2);
-//
-//	while(a_test < 10000)
-//	{
-//		b_test += 10 *a_test;
-//
-//	}
-//
-//	b_test += 10;
-//	a_test = 0;
 
+  washer_init(&hadc1);
+
+  init_current_probes(&hadc1);
+
+//  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim7);
+
+  disable_UVC();
+
+  // FPGA Motor Test
+  //h_robot6900.robot_state->Etat_Movement = Mouvement_Post_Launch;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -244,11 +266,20 @@ int main(void)
 	  /* RPlidar FSM */
 	  RPlidar_process(&h_robot6900);
 
+	  /* Robot Mouvment */
+	  movement_process(&h_robot6900);
+
+	  /* Washer Handler */
+	  washer_process(&h_robot6900);
+
+	  current_probes_process(&h_robot6900);
+
 	  /* Debug LEDs state */
 	  update_LEDs(&h_robot6900);
 
 	  /* General shell returning data to the HOST */
 	  parser_return(&h_robot6900);
+
   }
   /* USER CODE END 3 */
 }
@@ -292,12 +323,10 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_UART4
-                              |RCC_PERIPHCLK_UART5|RCC_PERIPHCLK_I2C1
-                              |RCC_PERIPHCLK_ADC12;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB|RCC_PERIPHCLK_USART1
+                              |RCC_PERIPHCLK_UART4|RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK2;
   PeriphClkInit.Uart4ClockSelection = RCC_UART4CLKSOURCE_PCLK1;
-  PeriphClkInit.Uart5ClockSelection = RCC_UART5CLKSOURCE_PCLK1;
-  PeriphClkInit.Adc12ClockSelection = RCC_ADC12PLLCLK_DIV1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
   PeriphClkInit.USBClockSelection = RCC_USBCLKSOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
@@ -327,17 +356,17 @@ static void MX_ADC1_Init(void)
   /** Common config
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.NbrOfConversion = 2;
   hadc1.Init.DMAContinuousRequests = DISABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
   hadc1.Init.LowPowerAutoWait = DISABLE;
   hadc1.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
@@ -353,12 +382,20 @@ static void MX_ADC1_Init(void)
   }
   /** Configure Regular Channel
   */
-  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Channel = ADC_CHANNEL_3;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_2;
+  sConfig.Rank = ADC_REGULAR_RANK_2;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -383,8 +420,8 @@ static void MX_CRC_Init(void)
 
   /* USER CODE BEGIN CRC_Init 1 */
 
-	/* Initializing CRC Initial value for crc-8bit calculation */
-	hcrc.Init.InitValue = 0xFF;
+  /* Initializing CRC Initial value for crc-8bit calculation */
+  hcrc.Init.InitValue = 0xFF;
 
   /* USER CODE END CRC_Init 1 */
   hcrc.Instance = CRC;
@@ -499,7 +536,7 @@ static void MX_SPI1_Init(void)
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_16BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
@@ -595,38 +632,39 @@ static void MX_UART4_Init(void)
 }
 
 /**
-  * @brief UART5 Initialization Function
+  * @brief USART1 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_UART5_Init(void)
+static void MX_USART1_UART_Init(void)
 {
 
-  /* USER CODE BEGIN UART5_Init 0 */
+  /* USER CODE BEGIN USART1_Init 0 */
 
-  /* USER CODE END UART5_Init 0 */
+  /* USER CODE END USART1_Init 0 */
 
-  /* USER CODE BEGIN UART5_Init 1 */
+  /* USER CODE BEGIN USART1_Init 1 */
 
-  /* USER CODE END UART5_Init 1 */
-  huart5.Instance = UART5;
-  huart5.Init.BaudRate = 115200;
-  huart5.Init.WordLength = UART_WORDLENGTH_8B;
-  huart5.Init.StopBits = UART_STOPBITS_1;
-  huart5.Init.Parity = UART_PARITY_NONE;
-  huart5.Init.Mode = UART_MODE_TX_RX;
-  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_DMADISABLEONERROR_INIT;
-  huart5.AdvancedInit.DMADisableonRxError = UART_ADVFEATURE_DMA_DISABLEONRXERROR;
-  if (HAL_UART_Init(&huart5) != HAL_OK)
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXOVERRUNDISABLE_INIT|UART_ADVFEATURE_DMADISABLEONERROR_INIT;
+  huart1.AdvancedInit.OverrunDisable = UART_ADVFEATURE_OVERRUN_DISABLE;
+  huart1.AdvancedInit.DMADisableonRxError = UART_ADVFEATURE_DMA_DISABLEONRXERROR;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN UART5_Init 2 */
+  /* USER CODE BEGIN USART1_Init 2 */
 
-  /* USER CODE END UART5_Init 2 */
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -669,8 +707,12 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Channel4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
   /* DMA2_Channel3_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Channel3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Channel3_IRQn);
@@ -700,10 +742,16 @@ static void MX_GPIO_Init(void)
                           |LD6_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOF, brosse_Pin|relais_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, CS_FPGA_Pin|CS_Accelerometer_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LOG_HARDFAULT_Pin|LOG_WARNING_Pin|RPLIDAR_EN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(UVC_Enable_GPIO_Port, UVC_Enable_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, BT_ENABLE_Pin|RPLIDAR_EN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : DRDY_Pin MEMS_INT3_Pin MEMS_INT4_Pin MEMS_INT1_Pin
                            MEMS_INT2_Pin */
@@ -724,6 +772,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : brosse_Pin relais_Pin */
+  GPIO_InitStruct.Pin = brosse_Pin|relais_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -737,8 +792,15 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LOG_HARDFAULT_Pin LOG_WARNING_Pin RPLIDAR_EN_Pin */
-  GPIO_InitStruct.Pin = LOG_HARDFAULT_Pin|LOG_WARNING_Pin|RPLIDAR_EN_Pin;
+  /*Configure GPIO pin : UVC_Enable_Pin */
+  GPIO_InitStruct.Pin = UVC_Enable_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(UVC_Enable_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : BT_ENABLE_Pin RPLIDAR_EN_Pin */
+  GPIO_InitStruct.Pin = BT_ENABLE_Pin|RPLIDAR_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

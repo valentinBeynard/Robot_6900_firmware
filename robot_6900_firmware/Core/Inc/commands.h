@@ -11,6 +11,15 @@
 
 #define CMD_START_OF_FRAME	0xA0
 
+/* Commands */
+#define CMD_SWITCH_ON	0x01
+#define CMD_START_MOTOR	0x02
+#define CMD_STOP_MOTOR	0x03
+#define CMD_START_LIDAR	0x04
+#define CMD_START_BROSSE	0x05
+#define CMD_START_PUMP	0x06
+#define CMD_START_UVC	0x07
+
 /* Size description of packet component in bits */
 #define CMD_PACKEt_SoF_SIZE	8
 #define CMD_PACKET_ID_SIZE	8
@@ -45,7 +54,14 @@ typedef struct
 }CMD_;
 
 uint8_t default_process(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
-uint8_t check_serial(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t switch_ON(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+
+uint8_t start_motor(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t stop_motor(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t start_lidar(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t washer_brosse(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t washer_pump(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
+uint8_t washer_UVC(CMD_PACKET* _cmd_pck, ROBOT6900_HANDLER* h_robot6900);
 
 //*/
 //

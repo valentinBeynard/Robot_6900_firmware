@@ -13,6 +13,8 @@
 
 #include "commands.h"
 
+//#define RPLIDAR_DEBUG
+
 //#############################################################################
 //        DEBUG
 //#############################################################################
@@ -77,11 +79,11 @@
 /* Number of sample data in a 360 Scan at 4KHz */
 #define SAMPLES_PER_360	608
 
-#define RPLIDAR_OUTPUT_100ms	2000
+#define RPLIDAR_OUTPUT_2000ms	2000
 
 #ifdef RPLIDAR_DEBUG
 
-#define SCAN_DEBUG_SIZE	29
+#define SCAN_DEBUG_SIZE	50
 typedef struct
 {
 	uint16_t scan_ID;

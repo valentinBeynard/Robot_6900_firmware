@@ -11,8 +11,14 @@
 */
 const CMD_ dispatch_table [NUMBER_OF_COMMAND] = {
 
-	{0xA1, default_process},
-    {0xA2, check_serial}
+	{(CMD_START_OF_FRAME | 0x00), default_process},
+    {(CMD_START_OF_FRAME | CMD_SWITCH_ON), switch_ON},
+	{(CMD_START_OF_FRAME | CMD_START_MOTOR), start_motor},
+	{(CMD_START_OF_FRAME | CMD_STOP_MOTOR), stop_motor},
+	{(CMD_START_OF_FRAME | CMD_START_LIDAR), start_lidar},
+	{(CMD_START_OF_FRAME | CMD_START_BROSSE), washer_brosse},
+	{(CMD_START_OF_FRAME | CMD_START_PUMP), washer_pump},
+	{(CMD_START_OF_FRAME | CMD_START_UVC), washer_UVC}
 
 };
 
@@ -82,6 +88,14 @@ uint8_t tx_last_ID = 0;
 /* Tx buffer for general shell returning data to the HOST */
 uint8_t Tx_buffer[TX_BUFFER_SIZE];
 
+uint8_t test_rn[3] = {'\r', '\r', '\n'};
+
+uint8_t _data_test_tx[600];
+
+volatile uint8_t tx_is_DAM = 0;
+
+volatile uint8_t tx_busy = 0;
+
 /*
 ############################################################################
 #
@@ -116,6 +130,16 @@ void NVIC_command_parser_INT(UART_HandleTypeDef *huart)
 	}
 }
 
+void NVIC_command_parser_TX_INT(UART_HandleTypeDef *huart)
+{
+	if(tx_is_DAM)
+	{
+		HAL_UART_Transmit(huart, test_rn, 3, 0xFFFF);
+		tx_is_DAM = 0;
+	}
+	tx_busy = 0;
+}
+
 /*
 ############################################################################
 #
@@ -130,6 +154,11 @@ void uart_init(UART_HandleTypeDef *huart, CRC_HandleTypeDef* hcrc)
 	// Initiate ptr
 	_hcrc = hcrc;
 	_huart5 = huart;
+
+	for(uint16_t i = 0 ; i < 600 ; i++)
+	{
+		_data_test_tx[i] = (i  % 0xFF);
+	}
 
 	// Activate UART Receive Interrupt each 4 bytes received
 	HAL_UART_Receive_IT(_huart5, &Rx_buffer, NVIC_INT_BYTE_SIZE);
@@ -247,14 +276,14 @@ COMMANDS_PARSER_ERROR command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd)
 	// Parse 32bits raw_data to the packet_structure.
 	*(_cmd) = *(CMD_PACKET*)(_raw_packet);
 
-	// Check Packet ID
-	if(_cmd->ID != rx_last_ID + 1)
-	{
-		parser_log = PARSER_WRONG_ID;
-	}
+//	// Check Packet ID
+//	if(_cmd->ID != rx_last_ID + 1)
+//	{
+//		parser_log = PARSER_WRONG_ID;
+//	}
 	// Check CRC-8
-	else
-	{
+	//else
+	//{
 		/* If ID right, update ID flag for next packet */
 		if(_cmd->ID == 0xFF)
 		{
@@ -276,7 +305,7 @@ COMMANDS_PARSER_ERROR command_integrity(uint8_t* _raw_packet, CMD_PACKET* _cmd)
 		/*
 		 * Nothing if CRC wrong
 		 */
-	}
+	//}
 
 	return parser_log;
 }
@@ -353,7 +382,6 @@ void parser_return(ROBOT6900_HANDLER* h_robot6900)
 	{
 		parser_OUTPUT_RPlidar(h_robot6900);
 //		HAL_UART_Transmit(_huart5, Tx_buffer, tx_pck_size, 0xFFFF);
-		h_robot6900->RPlidar->RPlidar_update = 0;
 	}
 //	/* Build the Robot State Output Packet */
 //	if(h_robot6900->robot_state->status_update)
@@ -399,22 +427,128 @@ uint8_t parser_OUTPUT_status(ROBOT6900_HANDLER* h_robot6900)
 
 uint8_t parser_OUTPUT_RPlidar(ROBOT6900_HANDLER* h_robot6900)
 {
-	uint16_t pck_size = 0;
-	/* Init Start of Frame */
-	Tx_buffer[0] = (CMD_START_OF_FRAME & tx_last_ID);
-	/* Init Type of Packet */
-	Tx_buffer[1] = TX_TYPE_DESCRIPTOR_PCK;
+	static uint16_t pck_size = 0;
+	static uint8_t _state = 0;
 
-	// RPlidar Packet Size
-	Tx_buffer[2] = (uint8_t)(h_robot6900->RPlidar->data_size & 0x00FF);
-	Tx_buffer[3] = (uint8_t)(h_robot6900->RPlidar->data_size >> 8);
-	Tx_buffer[4] = '\n';
+	static uint16_t nbr_chunk = 0;
+	static uint16_t current_chunk = 0;
+	uint16_t chunk_size = 5 * 6;
+
+	uint16_t tx_size = 0;
 
 	// Send Pre-packet descriptor
-	HAL_UART_Transmit(_huart5, &Tx_buffer, 5, 0xFFFF);
+	if(tx_busy == 0)
+	{
+		pck_size = h_robot6900->RPlidar->data_size;
 
-	// Send prepacket (4 bytes in a blocking way)
-	HAL_UART_Transmit_IT(_huart5, h_robot6900->RPlidar->data, h_robot6900->RPlidar->data_size);
+		/* Init Start of Frame */
+		Tx_buffer[0] = (CMD_START_OF_FRAME);
+
+		Tx_buffer[1] = tx_last_ID;
+		/* Init Type of Packet */
+		Tx_buffer[2] = TX_TYPE_DESCRIPTOR_PCK;
+
+		Tx_buffer[3] = (uint8_t)(pck_size & 0x00FF);
+		Tx_buffer[4] = (uint8_t)((pck_size & 0xFF00) >> 8);
+
+		//HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size)
+		//HAL_UART_Transmit_IT(_huart5, Tx_buffer, 5);//, 0xFFFF);
+
+		HAL_UART_Transmit_IT(_huart5, Tx_buffer, 5);//, 0xFFFF);
+		tx_busy = 1;
+		while(tx_busy) {};
+
+//			HAL_UART_Transmit_IT(_huart5, test_rn, 3);//, 0xFFFF);
+		HAL_UART_Transmit_IT(_huart5, test_rn, 3);//, 0xFFFF);
+		tx_busy = 1;
+		while(tx_busy) {};
+
+		tx_is_DAM = 1;
+		HAL_UART_Transmit_DMA(_huart5, h_robot6900->RPlidar->data, pck_size);
+		tx_busy = 1;
+
+		h_robot6900->RPlidar->RPlidar_update = 0;
+	}
+
+
+//	if(tx_busy == 0)
+//	{
+//		// Send pre-packet with TYPE and sise
+//		if(_state == 0)
+//		{
+//			pck_size = h_robot6900->RPlidar->data_size;
+//			nbr_chunk = (pck_size / (chunk_size) );
+//
+//
+//			/* Init Start of Frame */
+//			Tx_buffer[0] = (CMD_START_OF_FRAME);
+//
+//			Tx_buffer[1] = tx_last_ID;
+//			/* Init Type of Packet */
+//			Tx_buffer[2] = TX_TYPE_DESCRIPTOR_PCK;
+//
+//			// RPlidar Packet Size
+//	//		Tx_buffer[3] = (uint8_t)(h_robot6900->RPlidar->data_size & 0x00FF);
+//	//		Tx_buffer[4] = (uint8_t)((h_robot6900->RPlidar->data_size & 0xFF00) >> 8);
+//
+//			Tx_buffer[3] = (uint8_t)(pck_size & 0x00FF);
+//			Tx_buffer[4] = (uint8_t)((pck_size & 0xFF00) >> 8);
+//
+////			HAL_UART_Transmit_IT(_huart5, test_rn, 3);//, 0xFFFF);
+////			tx_busy = 1;
+////			while(tx_busy) {};
+//			//HAL_StatusTypeDef HAL_UART_Transmit_DMA(UART_HandleTypeDef *huart, uint8_t *pData, uint16_t Size)
+//			//HAL_UART_Transmit_IT(_huart5, Tx_buffer, 5);//, 0xFFFF);
+//
+//			HAL_UART_Transmit_IT(_huart5, Tx_buffer, 5);//, 0xFFFF);
+//			tx_busy = 1;
+//			while(tx_busy) {};
+//
+////			HAL_UART_Transmit_IT(_huart5, test_rn, 3);//, 0xFFFF);
+//			HAL_UART_Transmit_IT(_huart5, test_rn, 3);//, 0xFFFF);
+//			tx_busy = 1;
+//			while(tx_busy) {};
+//
+//			_state = 1;
+//		}
+//		// Send ( RPlidar->data / (6 * 100) ) chunk of RPLidar data
+//		else
+//		{
+//			if(current_chunk < nbr_chunk)
+//			{
+//				if(pck_size - (current_chunk * chunk_size) >= chunk_size)
+//				{
+//					tx_size = chunk_size;
+//				}
+//				else
+//				{
+//					tx_size = pck_size - (current_chunk * chunk_size);
+//				}
+//				HAL_UART_Transmit_IT(_huart5, test_rn, 3);//, 0xFFFF);
+//				tx_busy = 1;
+//				while(tx_busy) {};
+//
+////				HAL_UART_Transmit_IT(_huart5,
+////						( h_robot6900->RPlidar->data + current_chunk * chunk_size),
+////						tx_size);
+//				HAL_UART_Transmit_DMA(_huart5,
+//						( h_robot6900->RPlidar->data + current_chunk * chunk_size),
+//						tx_size);
+//				tx_busy = 1;
+//				current_chunk++;
+//			}
+//			else
+//			{
+//				current_chunk = 0;
+//				_state = 0;
+//				h_robot6900->RPlidar->RPlidar_update = 0;
+//			}
+//
+//		}
+//
+//	}
+
+	//HAL_UART_Transmit_IT(_huart5, test_rn, 2);
 
 }
 

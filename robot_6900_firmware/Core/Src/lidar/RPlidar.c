@@ -7,6 +7,7 @@
 
 #include "RPlidar.h"
 
+
 /*
 ############################################################################
 #
@@ -25,7 +26,9 @@ TIM_HandleTypeDef* _htim7;
 uint8_t RP_Rx_buffer[RX_NBR_BUFFER][RX_BUFFER_SIZE];
 
 /* LiDAR data after calculation for a 360 degrees scan */
-RPLIDAR_DATA RPlidar_data[SAMPLES_PER_360];
+RPLIDAR_DATA RPlidar_data[2][SAMPLES_PER_360];
+
+uint8_t RPlidar_data_current = 0;
 
 /* Index of the current buffer used by the DMA channel */
 uint8_t current_DMA_buffer = 0;
@@ -51,6 +54,8 @@ RPLIDAR_ERROR RPlidar_Log = RPLIDAR_INIT;
 /* Timout Flag. Set by timer interrupt. 1 if RPlidar Timerout, otherwise 0 */
 volatile uint8_t RPlidar_timeout = 0;
 
+uint8_t RPLidar_1ms_TIM_enable = 0;
+
 /* Global counter of hardware issue */
 uint8_t RPlidar_hard_failure_cnt = 0;
 
@@ -65,7 +70,7 @@ float RPlidar_RPM = 0.0f;
 
 
 //uint8_t RPlidar_OUTPUT_cnt = 0;
-uint16_t RPlidar_OUTPUT_cnt = 0;
+volatile uint16_t RPlidar_OUTPUT_cnt = 0;
 
 /* RP_lidar Descriptor packet */
 RPLIDAR_DESCRIPTOR_PCK RPlidar_descriptor_pck =
@@ -181,14 +186,17 @@ void NVIC_RPlidar_INT(UART_HandleTypeDef *huart)
  */
 void NVIC_Timout_1ms_INT(TIM_HandleTypeDef* htim)
 {
-	if(RPM_init == 1)
+	if(RPLidar_1ms_TIM_enable)
 	{
-		RPM_cnt_1ms += 1;
-		RPlidar_OUTPUT_cnt += 1;
-	}
-	else
-	{
-		RPlidar_timeout += 1;
+		if(RPM_init == 1)
+		{
+			RPM_cnt_1ms += 1;
+			RPlidar_OUTPUT_cnt += 1;
+		}
+		else
+		{
+			RPlidar_timeout += 1;
+		}
 	}
 }
 
@@ -215,7 +223,7 @@ void RPlidar_init(ROBOT6900_HANDLER* h_robot6900, UART_HandleTypeDef *huart, TIM
 	_huart = huart;
 	_htim7 = htim7;
 
-	h_robot6900->RPlidar->data = (uint16_t*)(&RPlidar_data);
+	h_robot6900->RPlidar->data = (uint8_t*)(&RPlidar_data[RPlidar_data_current]);
 
 	// Disable Lidar motor
 	HAL_GPIO_WritePin(GPIOA, RPLIDAR_EN_Pin, GPIO_PIN_RESET);
@@ -249,7 +257,7 @@ RPLIDAR_ERROR RPlidar_process(ROBOT6900_HANDLER* h_robot6900)
 	// Full State Machine Call
 	RPlidar_Log = (RPlidar_FSM[RPlidar_current_state]).state_process(h_robot6900);
 
-	if(RPlidar_OUTPUT_cnt >= RPLIDAR_OUTPUT_100ms)
+	if(RPlidar_OUTPUT_cnt >= RPLIDAR_OUTPUT_2000ms)
 	{
 		h_robot6900->RPlidar->RPlidar_update = 1;
 		RPlidar_OUTPUT_cnt = 0;
@@ -404,7 +412,7 @@ RPLIDAR_ERROR health_state(ROBOT6900_HANDLER* h_robot6900)
 		else
 		{
 			// Check if communication with the lidar timed out
-			if(RPlidar_timeout >= 2)
+			if(RPlidar_timeout >= 20)
 			{
 				RPlidar_timeout = 0;
 				RPlidar_abord_timeout();
@@ -464,7 +472,7 @@ RPLIDAR_ERROR reset_state(ROBOT6900_HANDLER* h_robot6900)
 		{
 			wait_cnt++;
 			RPlidar_timeout = 0;
-			if(wait_cnt >= 2)	// TIMER_INT each 1ms, so wait_cnt > 2 to get 2ms
+			if(wait_cnt >= 20)	// TIMER_INT each 1ms, so wait_cnt > 2 to get 2ms
 			{
 				RPlidar_current_state = RP_GET_HEALTH;	/* ------------> */
 				reset_process_step = 0;
@@ -609,7 +617,7 @@ RPLIDAR_ERROR sampling_state(ROBOT6900_HANDLER* h_robot6900)
 		if(RPlidar_timeout)
 		{
 			RPlidar_timeout = 0;
-			if(timeout_cnt >= 20)
+			if(timeout_cnt >= 200)
 			{
 				RPlidar_current_state = RP_COM_ERR;	/* ------------> */
 				init_process_buffer = 0;
@@ -690,7 +698,8 @@ RPLIDAR_ERROR processing_state(ROBOT6900_HANDLER* h_robot6900)
 	{
 		RPlidar_RPM = RPlidar_measure_RPM();
 		// Times 2 since h_robot6900->RPlidar->data is a 16bits ptr instead of 32bits ptr
-		h_robot6900->RPlidar->data_size = 2 * current_data_index;
+		h_robot6900->RPlidar->data_size = 6 * current_data_index;
+		RPlidar_data_current = (RPlidar_data_current+ 1) % 2;
 
 #ifdef RPLIDAR_DEBUG
 		scan_DEBUG[nbr_scan].scan_ID = nbr_scan;
@@ -727,12 +736,12 @@ RPLIDAR_ERROR processing_state(ROBOT6900_HANDLER* h_robot6900)
 		}
 
 		// Process point 1 in Cabin Ci
-		RPlidar_data[current_data_index + pt_index].distance = F_CABIN_DISTANCE1(cabin_i);
-		RPlidar_data[current_data_index + pt_index].angle = start_angle + (DIFF_ANGLE(start_angle, next_start_angle) / 32.0) * pt_index - (float)(F_CABIN_DANGLE1(cabin_i));
+		RPlidar_data[RPlidar_data_current][current_data_index + pt_index].distance = F_CABIN_DISTANCE1(cabin_i);
+		RPlidar_data[RPlidar_data_current][current_data_index + pt_index].angle = start_angle + (DIFF_ANGLE(start_angle, next_start_angle) / 32.0) * pt_index - (float)(F_CABIN_DANGLE1(cabin_i));
 
 		// Process point 2 in Cabin Ci
-		RPlidar_data[current_data_index + pt_index + 1].distance = F_CABIN_DISTANCE2(cabin_i);
-		RPlidar_data[current_data_index + pt_index + 1].angle = start_angle + (DIFF_ANGLE(start_angle, next_start_angle) / 32.0) * (pt_index+1) - (float)(F_CABIN_DANGLE2(cabin_i));
+		RPlidar_data[RPlidar_data_current][current_data_index + pt_index + 1].distance = F_CABIN_DISTANCE2(cabin_i);
+		RPlidar_data[RPlidar_data_current][current_data_index + pt_index + 1].angle = start_angle + (DIFF_ANGLE(start_angle, next_start_angle) / 32.0) * (pt_index+1) - (float)(F_CABIN_DANGLE2(cabin_i));
 
 
 	}
@@ -815,8 +824,9 @@ RPLIDAR_ERROR hardware_error_state(ROBOT6900_HANDLER* h_robot6900)
  */
 void RPlidar_start_timeout()
 {
-	_htim7->Instance->CNT = 0;
-	HAL_TIM_Base_Start_IT(_htim7);
+	//_htim7->Instance->CNT = 0; // Change on 14/01/2021
+	//HAL_TIM_Base_Start_IT(_htim7); // Change on 14/01/2021
+	RPLidar_1ms_TIM_enable = 1;
 }
 
 /*
@@ -824,7 +834,8 @@ void RPlidar_start_timeout()
  */
 void RPlidar_abord_timeout()
 {
-	HAL_TIM_Base_Stop_IT(_htim7);
+	//HAL_TIM_Base_Stop_IT(_htim7); // Change on 14/01/2021
+	RPLidar_1ms_TIM_enable = 0;
 }
 
 /*
@@ -842,9 +853,10 @@ float RPlidar_measure_RPM()
 		RPM_cnt_1ms = 0;
 
 		// Init and start 1ms Timer Interrupt
-		RPlidar_abord_timeout();
-		_htim7->Instance->CNT = 0;
-		HAL_TIM_Base_Start_IT(_htim7);
+		//RPlidar_abord_timeout(); // Change on 14/01/2021
+		//_htim7->Instance->CNT = 0; // Change on 14/01/2021
+		//HAL_TIM_Base_Start_IT(_htim7); // Change on 14/01/2021
+		//RPlidar_start_timeout(); // Change on 14/01/2021
 
 	}
 	else

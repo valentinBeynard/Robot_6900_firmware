@@ -40,7 +40,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_uart_ex.h \
  ../Core/Src/robot_handler.h ../Core/Inc/commands_parser.h \
  ../Core/Inc/main.h ../Core/Inc/commands.h \
- ../Core/Inc/../Src/robot_handler.h ../Core/Inc/RPlidar.h
+ ../Core/Inc/../Src/robot_handler.h ../Core/Inc/RPlidar.h \
+ ../Core/Inc/washer_handler.h
 
 ../Core/Inc/main.h:
 
@@ -133,3 +134,5 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/../Src/robot_handler.h:
 
 ../Core/Inc/RPlidar.h:
+
+../Core/Inc/washer_handler.h:

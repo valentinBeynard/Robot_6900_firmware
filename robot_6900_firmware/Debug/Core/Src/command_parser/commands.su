@@ -1,2 +1,8 @@
 commands.c:3:9:default_process	16	static
-commands.c:11:9:check_serial	16	static
+commands.c:11:9:switch_ON	16	static
+commands.c:20:9:start_motor	16	static
+commands.c:29:9:stop_motor	16	static
+commands.c:38:9:start_lidar	16	static
+commands.c:47:9:washer_brosse	16	static
+commands.c:63:9:washer_pump	16	static
+commands.c:80:9:washer_UVC	16	static

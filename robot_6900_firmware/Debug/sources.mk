@@ -12,6 +12,8 @@ SIZE_OUTPUT :=
 OBJDUMP_LIST := 
 EXECUTABLES := 
 OBJS := 
+S_DEPS := 
+S_UPPER_DEPS := 
 C_DEPS := 
 OBJCOPY_BIN := 
 
@@ -20,7 +22,10 @@ SUBDIRS := \
 Core/Src/command_parser \
 Core/Src/lidar \
 Core/Src \
+Core/Src/movement_handler \
+Core/Src/power_handler \
 Core/Src/spi_handler \
+Core/Src/washer \
 Core/Startup \
 Drivers/STM32F3xx_HAL_Driver/Src \
 
